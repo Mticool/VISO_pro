@@ -48,6 +48,7 @@ interface StoreState {
   textColor: string
   accentColor: string
   overlayOpacity: number
+  fontSize: number
   brandHandle: string
   brandLogoUrl: string | null
   
@@ -76,6 +77,7 @@ interface StoreState {
   setTextColor: (color: string) => void
   setAccentColor: (color: string) => void
   setOverlayOpacity: (opacity: number) => void
+  setFontSize: (size: number) => void
   applyPalette: (palette: ColorPalette) => void
   setBrandHandle: (handle: string) => void
   setBrandLogoUrl: (url: string | null) => void
@@ -136,6 +138,7 @@ export const useStore = create<StoreState>()(
       textColor: '#FFFFFF',
       accentColor: '#3B82F6',
       overlayOpacity: 50,
+      fontSize: 18,
       brandHandle: '',
       brandLogoUrl: null,
       useWebSearch: false,
@@ -247,6 +250,7 @@ export const useStore = create<StoreState>()(
       setTextColor: (color) => set({ textColor: color }),
       setAccentColor: (color) => set({ accentColor: color }),
       setOverlayOpacity: (opacity) => set({ overlayOpacity: Math.min(100, Math.max(0, opacity)) }),
+      setFontSize: (size) => set({ fontSize: Math.min(64, Math.max(12, size)) }),
       applyPalette: (palette) => set({ textColor: palette.textColor, accentColor: palette.accentColor }),
       setBrandHandle: (handle) => set({ brandHandle: handle }),
       setBrandLogoUrl: (url) => set({ brandLogoUrl: url }),
@@ -319,6 +323,7 @@ export const useStore = create<StoreState>()(
       partialize: (state) => ({
         brandHandle: state.brandHandle,
         fontFamily: state.fontFamily,
+        fontSize: state.fontSize,
         textColor: state.textColor,
         accentColor: state.accentColor,
         platform: state.platform,

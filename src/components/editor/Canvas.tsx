@@ -7,6 +7,7 @@ import { cn } from '../../lib/utils'
 import { AspectRatioSelector } from '../ui/AspectRatioSelector'
 import { TemplateSelector } from '../ui/TemplateSelector'
 import { FontSelector } from '../ui/FontSelector'
+import { FontSizeSelector } from '../ui/FontSizeSelector'
 import { ColorSelector } from '../ui/ColorSelector'
 import { BrandingPanel } from '../ui/BrandingPanel'
 import { InstagramPreview } from '../ui/InstagramPreview'
@@ -286,6 +287,7 @@ export function Canvas() {
             </>
           )}
           <FontSelector />
+          <FontSizeSelector />
           <ColorSelector />
           
           {platform === 'tiktok' && (
