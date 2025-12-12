@@ -13,7 +13,7 @@ const aspectDimensions: Record<AspectRatio, { width: number; height: number }> =
   youtube: { width: 400, height: 225 },
 }
 
-// Convert external images to base64 for export
+// Convert external images to base64 for export using proxy
 async function convertImagesToBase64(container: HTMLElement): Promise<void> {
   const images = container.querySelectorAll('img')
   
@@ -23,16 +23,14 @@ async function convertImagesToBase64(container: HTMLElement): Promise<void> {
     const originalSrc = img.src
     
     try {
-      const url = new URL(originalSrc)
-      url.searchParams.set('_t', Date.now().toString())
+      // Use proxy to bypass CORS
+      const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(originalSrc)}`
       
-      const response = await fetch(url.toString(), { 
-        mode: 'cors',
-        credentials: 'omit',
+      const response = await fetch(proxyUrl, { 
         cache: 'no-cache'
       })
       
-      if (!response.ok) throw new Error('Failed to fetch')
+      if (!response.ok) throw new Error(`Proxy failed: ${response.status}`)
       
       const blob = await response.blob()
       
@@ -48,7 +46,7 @@ async function convertImagesToBase64(container: HTMLElement): Promise<void> {
         reader.readAsDataURL(blob)
       })
     } catch (error) {
-      console.warn('Failed to convert image:', originalSrc)
+      console.warn('Failed to convert image via proxy:', originalSrc, error)
     }
   })
   

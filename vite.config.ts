@@ -633,6 +633,46 @@ export default defineConfig(({ mode }) => {
               res.end(JSON.stringify({ url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800' }))
             }
           })
+
+          // ===== /api/proxy-image - Image Proxy for Export =====
+          server.middlewares.use('/api/proxy-image', async (req, res) => {
+            res.setHeader('Access-Control-Allow-Origin', '*')
+            
+            if (req.method === 'OPTIONS') { 
+              res.statusCode = 200
+              res.end()
+              return 
+            }
+
+            try {
+              const url = new URL(req.url || '', `http://${req.headers.host}`)
+              const imageUrl = url.searchParams.get('url')
+
+              if (!imageUrl) {
+                res.statusCode = 400
+                res.end(JSON.stringify({ error: 'URL required' }))
+                return
+              }
+
+              const response = await fetch(imageUrl)
+              
+              if (!response.ok) {
+                throw new Error(`Failed to fetch: ${response.status}`)
+              }
+
+              const contentType = response.headers.get('content-type') || 'image/jpeg'
+              const buffer = await response.arrayBuffer()
+
+              res.setHeader('Content-Type', contentType)
+              res.setHeader('Cache-Control', 'public, max-age=31536000')
+              res.statusCode = 200
+              res.end(Buffer.from(buffer))
+            } catch (error) {
+              console.error('❌ Image proxy error:', error)
+              res.statusCode = 500
+              res.end(JSON.stringify({ error: 'Proxy failed' }))
+            }
+          })
         },
       },
     ],
