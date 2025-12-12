@@ -87,8 +87,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const data = await response.json();
     const responseText = data.choices?.[0]?.message?.content || '';
-    const cleanedJson = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    const parsed = JSON.parse(cleanedJson);
+    let cleanedJson = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    
+    let parsed;
+    try {
+      parsed = JSON.parse(cleanedJson);
+    } catch {
+      cleanedJson = cleanedJson.replace(/"([^"]*?)"/g, (match, content) => {
+        const fixed = content.replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t');
+        return `"${fixed}"`;
+      });
+      parsed = JSON.parse(cleanedJson);
+    }
 
     console.log(`✅ Сгенерировано тегов: ${
       (parsed.hashtags?.popular_en?.length || 0) + 

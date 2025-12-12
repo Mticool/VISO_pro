@@ -124,8 +124,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       throw new Error('Empty response from OpenRouter');
     }
 
-    const cleanedJson = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    const parsed = JSON.parse(cleanedJson);
+    // Clean and parse JSON safely
+    let cleanedJson = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    
+    let parsed;
+    try {
+      parsed = JSON.parse(cleanedJson);
+    } catch {
+      // Fix unescaped newlines inside JSON strings
+      cleanedJson = cleanedJson.replace(/"([^"]*?)"/g, (match, content) => {
+        const fixed = content
+          .replace(/\n/g, '\\n')
+          .replace(/\r/g, '\\r')
+          .replace(/\t/g, '\\t');
+        return `"${fixed}"`;
+      });
+      parsed = JSON.parse(cleanedJson);
+    }
     const slides = parsed.slides || parsed;
     const caption = parsed.caption || '';
 

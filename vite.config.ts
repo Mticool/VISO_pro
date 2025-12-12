@@ -123,6 +123,29 @@ async function callOpenRouter(apiKey: string, systemPrompt: string, userMessage:
   return data.choices?.[0]?.message?.content || ''
 }
 
+// Helper to safely parse JSON from AI response
+function safeParseJSON(text: string) {
+  // Remove markdown code blocks
+  let cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
+  
+  // Try parsing as-is first
+  try {
+    return JSON.parse(cleaned)
+  } catch {
+    // If parsing fails, try to fix common issues
+    // Fix unescaped newlines inside JSON strings (between quotes)
+    cleaned = cleaned.replace(/"([^"]*?)"/g, (match, content) => {
+      const fixed = content
+        .replace(/\n/g, '\\n')
+        .replace(/\r/g, '\\r')
+        .replace(/\t/g, '\\t')
+      return `"${fixed}"`
+    })
+    
+    return JSON.parse(cleaned)
+  }
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   
@@ -182,7 +205,7 @@ export default defineConfig(({ mode }) => {
                   'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                  model: 'llama-3.1-sonar-large-128k-online',
+                  model: 'sonar',
                   messages: [
                     {
                       role: 'system',
@@ -267,9 +290,7 @@ export default defineConfig(({ mode }) => {
               console.log(`🎨 Генерация для ${platform}: "${topic}"${researchContext ? ' (with research)' : ''}`)
 
               const responseText = await callOpenRouter(apiKey, systemPrompt, `Тема: "${topic}"`)
-              
-              const cleanedJson = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
-              const parsed = JSON.parse(cleanedJson)
+              const parsed = safeParseJSON(responseText)
               const slides = parsed.slides || parsed
               const caption = parsed.caption || ''
 
@@ -344,8 +365,7 @@ export default defineConfig(({ mode }) => {
               const userMessage = `Тема: "${topic}"\nПлатформа: ${platform}\n${cleanMode ? 'ВАЖНО: Оставь все title пустыми.' : ''}`
 
               const responseText = await callOpenRouter(apiKey, systemPrompt, userMessage)
-              const cleanedJson = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
-              const parsed = JSON.parse(cleanedJson)
+              const parsed = safeParseJSON(responseText)
               const concepts = parsed.concepts || []
 
               console.log(`✅ Сгенерировано ${concepts.length} концепций`)
@@ -473,8 +493,7 @@ export default defineConfig(({ mode }) => {
                 1024
               )
 
-              const cleanedJson = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
-              const parsed = JSON.parse(cleanedJson)
+              const parsed = safeParseJSON(responseText)
 
               res.setHeader('Content-Type', 'application/json')
               res.statusCode = 200
