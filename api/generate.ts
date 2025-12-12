@@ -1,4 +1,3 @@
-import Anthropic from '@anthropic-ai/sdk';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 const PLATFORM_PROMPTS: Record<string, string> = {
@@ -72,6 +71,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'Topic is required' });
     }
 
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    
+    if (!apiKey) {
+      console.error('❌ OPENROUTER_API_KEY not found in environment');
+      return res.status(500).json({ 
+        error: 'API key not configured',
+        debug: 'OPENROUTER_API_KEY is missing'
+      });
+    }
+
     const platformPrompt = PLATFORM_PROMPTS[platform] || PLATFORM_PROMPTS.instagram;
     
     // Build system prompt with optional research context
@@ -83,28 +92,38 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     console.log(`🎨 Генерация для ${platform}: "${topic}"${researchContext ? ' (with research)' : ''}`);
 
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    
-    if (!apiKey) {
-      console.error('❌ ANTHROPIC_API_KEY not found in environment');
-      return res.status(500).json({ 
-        error: 'API key not configured',
-        debug: 'ANTHROPIC_API_KEY is missing'
-      });
+    // Call OpenRouter API
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'HTTP-Referer': 'https://viso-pro.vercel.app',
+        'X-Title': 'VISO App',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'anthropic/claude-3.5-sonnet',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: `Тема: "${topic}"` }
+        ],
+        max_tokens: 2048,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.text();
+      console.error('❌ OpenRouter API error:', response.status, errorData);
+      throw new Error(`OpenRouter API error: ${response.status} - ${errorData}`);
     }
 
-    const anthropic = new Anthropic({
-      apiKey: apiKey,
-    });
+    const data = await response.json();
+    const responseText = data.choices?.[0]?.message?.content || '';
+    
+    if (!responseText) {
+      throw new Error('Empty response from OpenRouter');
+    }
 
-    const message = await anthropic.messages.create({
-      model: 'claude-3-5-sonnet-20240620',
-      max_tokens: 2048,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: `Тема: "${topic}"` }],
-    });
-
-    const responseText = message.content[0].type === 'text' ? message.content[0].text : '';
     const cleanedJson = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     const parsed = JSON.parse(cleanedJson);
     const slides = parsed.slides || parsed;
@@ -127,7 +146,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.error('❌ Ошибка API:', error);
     
     const errorMessage = error?.message || 'Unknown error';
-    const errorStatus = error?.status || 500;
     
     return res.status(200).json({ 
       slides: [{ 
@@ -139,9 +157,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }],
       caption: '',
       fallback: true,
-      error: errorMessage,
-      errorStatus: errorStatus
+      error: errorMessage
     });
   }
 }
-

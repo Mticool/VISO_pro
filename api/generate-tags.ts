@@ -1,4 +1,3 @@
-import Anthropic from '@anthropic-ai/sdk';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 const SYSTEM_PROMPT = `Ты — эксперт по SMM и SEO-оптимизации контента.
@@ -52,27 +51,42 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'Topic is required' });
     }
 
-    console.log(`🏷️ Генерация тегов для: "${topic}"`);
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    
+    if (!apiKey) {
+      return res.status(500).json({ error: 'API key not configured' });
+    }
 
-    const anthropic = new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY,
-    });
+    console.log(`🏷️ Генерация тегов для: "${topic}"`);
 
     const contentSummary = slideContent 
       ? `\n\nКонтент слайдов:\n${slideContent}`
       : '';
 
-    const message = await anthropic.messages.create({
-      model: 'claude-3-5-sonnet-20240620',
-      max_tokens: 1024,
-      system: SYSTEM_PROMPT,
-      messages: [{ 
-        role: 'user', 
-        content: `Тема: "${topic}"${contentSummary}` 
-      }],
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'HTTP-Referer': 'https://viso-pro.vercel.app',
+        'X-Title': 'VISO App',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'anthropic/claude-3.5-sonnet',
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'user', content: `Тема: "${topic}"${contentSummary}` }
+        ],
+        max_tokens: 1024,
+      }),
     });
 
-    const responseText = message.content[0].type === 'text' ? message.content[0].text : '';
+    if (!response.ok) {
+      throw new Error(`OpenRouter API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const responseText = data.choices?.[0]?.message?.content || '';
     const cleanedJson = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     const parsed = JSON.parse(cleanedJson);
 
@@ -100,4 +114,3 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   }
 }
-

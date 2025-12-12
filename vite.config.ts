@@ -1,6 +1,5 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
-import Anthropic from '@anthropic-ai/sdk'
 
 const PLATFORM_PROMPTS: Record<string, string> = {
   instagram: `Создай виральную карусель из 5-7 слайдов для Instagram.
@@ -94,6 +93,35 @@ const BATCH_SYSTEM_PROMPT = `Ты создаёшь 4 РАЗНЫЕ концепц
 - imagePrompt: ТОЛЬКО на английском, детальные, разные для каждого стиля
 - Каждая концепция должна быть УНИКАЛЬНОЙ
 - Стили должны сильно отличаться друг от друга`
+
+// Helper function to call OpenRouter API
+async function callOpenRouter(apiKey: string, systemPrompt: string, userMessage: string, maxTokens = 2048) {
+  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'HTTP-Referer': 'https://viso-pro.vercel.app',
+      'X-Title': 'VISO App',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'anthropic/claude-3.5-sonnet',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userMessage }
+      ],
+      max_tokens: maxTokens,
+    }),
+  })
+
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(`OpenRouter API error: ${response.status} - ${errorText}`)
+  }
+
+  const data = await response.json()
+  return data.choices?.[0]?.message?.content || ''
+}
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
@@ -191,7 +219,7 @@ export default defineConfig(({ mode }) => {
             }
           })
 
-          // ===== /api/generate - Claude AI =====
+          // ===== /api/generate - OpenRouter Claude =====
           server.middlewares.use('/api/generate', async (req, res) => {
             if (req.method === 'OPTIONS') {
               res.setHeader('Access-Control-Allow-Origin', '*')
@@ -223,29 +251,23 @@ export default defineConfig(({ mode }) => {
                 return
               }
 
+              const apiKey = env.OPENROUTER_API_KEY
+              if (!apiKey) {
+                throw new Error('OPENROUTER_API_KEY not configured')
+              }
+
               const platformPrompt = PLATFORM_PROMPTS[platform] || PLATFORM_PROMPTS.instagram
               
-              // Build system prompt with optional research context
               let systemPrompt = `${SYSTEM_PROMPT_BASE}\n\n${platformPrompt}`
               
               if (researchContext) {
-                systemPrompt += `\n\n📊 АКТУАЛЬНАЯ ИНФОРМАЦИЯ ИЗ ИНТЕРНЕТА (используй эти данные):\n${researchContext}\n\nИспользуй эту свежую информацию для создания актуального и информативного контента.`
+                systemPrompt += `\n\n📊 АКТУАЛЬНАЯ ИНФОРМАЦИЯ ИЗ ИНТЕРНЕТА:\n${researchContext}`
               }
 
               console.log(`🎨 Генерация для ${platform}: "${topic}"${researchContext ? ' (with research)' : ''}`)
 
-              const anthropic = new Anthropic({
-                apiKey: env.ANTHROPIC_API_KEY,
-              })
-
-              const message = await anthropic.messages.create({
-                model: 'claude-3-5-sonnet-20240620',
-                max_tokens: 2048,
-                system: systemPrompt,
-                messages: [{ role: 'user', content: `Тема: "${topic}"` }],
-              })
-
-              const responseText = message.content[0].type === 'text' ? message.content[0].text : ''
+              const responseText = await callOpenRouter(apiKey, systemPrompt, `Тема: "${topic}"`)
+              
               const cleanedJson = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
               const parsed = JSON.parse(cleanedJson)
               const slides = parsed.slides || parsed
@@ -266,19 +288,20 @@ export default defineConfig(({ mode }) => {
               res.statusCode = 200
               res.end(JSON.stringify({ slides: slidesWithIds, caption }))
 
-            } catch (error) {
+            } catch (error: any) {
               console.error('❌ Ошибка API:', error)
               res.setHeader('Content-Type', 'application/json')
               res.statusCode = 200
               res.end(JSON.stringify({ 
-                slides: [{ id: `s-${Date.now()}`, type: 'cover', title: 'Ваша тема', content: 'Попробуйте ещё раз', imageKeyword: 'abstract dark' }],
+                slides: [{ id: `s-${Date.now()}`, type: 'cover', title: 'Ошибка генерации', content: error?.message?.substring(0, 100) || 'Попробуйте ещё раз', imageKeyword: 'abstract dark' }],
                 caption: '',
-                fallback: true 
+                fallback: true,
+                error: error?.message
               }))
             }
           })
 
-          // ===== /api/generate-batch - Batch Cover Generation (4 variants) =====
+          // ===== /api/generate-batch - Batch Cover Generation =====
           server.middlewares.use('/api/generate-batch', async (req, res) => {
             if (req.method === 'OPTIONS') {
               res.setHeader('Access-Control-Allow-Origin', '*')
@@ -307,27 +330,20 @@ export default defineConfig(({ mode }) => {
                 return
               }
 
-              console.log(`🎨 Пакетная генерация 4 вариантов: "${topic}"`)
+              const apiKey = env.OPENROUTER_API_KEY
+              if (!apiKey) {
+                throw new Error('OPENROUTER_API_KEY not configured')
+              }
 
-              const anthropic = new Anthropic({
-                apiKey: env.ANTHROPIC_API_KEY,
-              })
+              console.log(`🎨 Пакетная генерация 4 вариантов: "${topic}"`)
 
               const systemPrompt = cleanMode 
                 ? BATCH_SYSTEM_PROMPT.replace(/title.*РУССКИЙ\)/g, 'title: ""') 
                 : BATCH_SYSTEM_PROMPT
 
-              const message = await anthropic.messages.create({
-                model: 'claude-3-5-sonnet-20240620',
-                max_tokens: 2048,
-                system: systemPrompt,
-                messages: [{ 
-                  role: 'user', 
-                  content: `Тема: "${topic}"\nПлатформа: ${platform}\n${cleanMode ? 'ВАЖНО: Оставь все title пустыми - генерируем только фоны без текста.' : ''}`
-                }],
-              })
+              const userMessage = `Тема: "${topic}"\nПлатформа: ${platform}\n${cleanMode ? 'ВАЖНО: Оставь все title пустыми.' : ''}`
 
-              const responseText = message.content[0].type === 'text' ? message.content[0].text : ''
+              const responseText = await callOpenRouter(apiKey, systemPrompt, userMessage)
               const cleanedJson = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
               const parsed = JSON.parse(cleanedJson)
               const concepts = parsed.concepts || []
@@ -378,20 +394,21 @@ export default defineConfig(({ mode }) => {
               const { text, command } = JSON.parse(body)
               const commandInstruction = REWRITE_COMMANDS[command] || REWRITE_COMMANDS.fix
 
-              const anthropic = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY })
+              const apiKey = env.OPENROUTER_API_KEY
+              if (!apiKey) {
+                throw new Error('OPENROUTER_API_KEY not configured')
+              }
 
-              const message = await anthropic.messages.create({
-                model: 'claude-3-5-sonnet-20240620',
-                max_tokens: 1024,
-                system: `Перепиши текст. Отвечай ТОЛЬКО готовым текстом на русском, без пояснений.`,
-                messages: [{ role: 'user', content: `Текст: "${text}"\n\nЗадача: ${commandInstruction}` }],
-              })
-
-              const result = message.content[0].type === 'text' ? message.content[0].text.trim() : text
+              const result = await callOpenRouter(
+                apiKey,
+                'Перепиши текст. Отвечай ТОЛЬКО готовым текстом на русском, без пояснений.',
+                `Текст: "${text}"\n\nЗадача: ${commandInstruction}`,
+                1024
+              )
 
               res.setHeader('Content-Type', 'application/json')
               res.statusCode = 200
-              res.end(JSON.stringify({ result }))
+              res.end(JSON.stringify({ result: result.trim() }))
             } catch (error) {
               res.statusCode = 500
               res.end(JSON.stringify({ error: 'Failed to rewrite' }))
@@ -422,7 +439,10 @@ export default defineConfig(({ mode }) => {
               const { topic, slideContent } = JSON.parse(body)
               console.log(`🏷️ Генерация тегов для: "${topic}"`)
 
-              const anthropic = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY })
+              const apiKey = env.OPENROUTER_API_KEY
+              if (!apiKey) {
+                throw new Error('OPENROUTER_API_KEY not configured')
+              }
 
               const tagsPrompt = `Ты — эксперт по SMM и SEO. Проанализируй тему и сгенерируй:
 
@@ -446,17 +466,13 @@ export default defineConfig(({ mode }) => {
   "metaDescription": "мета описание"
 }`
 
-              const message = await anthropic.messages.create({
-                model: 'claude-3-5-sonnet-20240620',
-                max_tokens: 1024,
-                system: tagsPrompt,
-                messages: [{ 
-                  role: 'user', 
-                  content: `Тема: "${topic}"${slideContent ? `\n\nКонтент: ${slideContent}` : ''}`
-                }],
-              })
+              const responseText = await callOpenRouter(
+                apiKey,
+                tagsPrompt,
+                `Тема: "${topic}"${slideContent ? `\n\nКонтент: ${slideContent}` : ''}`,
+                1024
+              )
 
-              const responseText = message.content[0].type === 'text' ? message.content[0].text : ''
               const cleanedJson = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
               const parsed = JSON.parse(cleanedJson)
 

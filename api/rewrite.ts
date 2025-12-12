@@ -1,4 +1,3 @@
-import Anthropic from '@anthropic-ai/sdk';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 const REWRITE_COMMANDS: Record<string, string> = {
@@ -30,20 +29,44 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'Text is required' });
     }
 
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    
+    if (!apiKey) {
+      return res.status(500).json({ error: 'API key not configured' });
+    }
+
     const commandInstruction = REWRITE_COMMANDS[command] || REWRITE_COMMANDS.fix;
 
-    const anthropic = new Anthropic({ 
-      apiKey: process.env.ANTHROPIC_API_KEY 
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'HTTP-Referer': 'https://viso-pro.vercel.app',
+        'X-Title': 'VISO App',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'anthropic/claude-3.5-sonnet',
+        messages: [
+          { 
+            role: 'system', 
+            content: 'Перепиши текст. Отвечай ТОЛЬКО готовым текстом на русском, без пояснений.' 
+          },
+          { 
+            role: 'user', 
+            content: `Текст: "${text}"\n\nЗадача: ${commandInstruction}` 
+          }
+        ],
+        max_tokens: 1024,
+      }),
     });
 
-    const message = await anthropic.messages.create({
-      model: 'claude-3-5-sonnet-20240620',
-      max_tokens: 1024,
-      system: `Перепиши текст. Отвечай ТОЛЬКО готовым текстом на русском, без пояснений.`,
-      messages: [{ role: 'user', content: `Текст: "${text}"\n\nЗадача: ${commandInstruction}` }],
-    });
+    if (!response.ok) {
+      throw new Error(`OpenRouter API error: ${response.status}`);
+    }
 
-    const result = message.content[0].type === 'text' ? message.content[0].text.trim() : text;
+    const data = await response.json();
+    const result = data.choices?.[0]?.message?.content?.trim() || text;
 
     return res.status(200).json({ result });
 
@@ -52,4 +75,3 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ error: 'Failed to rewrite' });
   }
 }
-

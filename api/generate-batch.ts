@@ -1,4 +1,3 @@
-import Anthropic from '@anthropic-ai/sdk';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 const BATCH_SYSTEM_PROMPT = `Ты создаёшь 4 РАЗНЫЕ концепции обложек для одной темы.
@@ -57,27 +56,45 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'Topic is required' });
     }
 
-    console.log(`🎨 Пакетная генерация 4 вариантов: "${topic}"`);
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    
+    if (!apiKey) {
+      return res.status(500).json({ error: 'API key not configured' });
+    }
 
-    const anthropic = new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY,
-    });
+    console.log(`🎨 Пакетная генерация 4 вариантов: "${topic}"`);
 
     const systemPrompt = cleanMode 
       ? BATCH_SYSTEM_PROMPT.replace(/title.*РУССКИЙ\)/g, 'title: ""') 
       : BATCH_SYSTEM_PROMPT;
 
-    const message = await anthropic.messages.create({
-      model: 'claude-3-5-sonnet-20240620',
-      max_tokens: 2048,
-      system: systemPrompt,
-      messages: [{ 
-        role: 'user', 
-        content: `Тема: "${topic}"\nПлатформа: ${platform}\n${cleanMode ? 'ВАЖНО: Оставь все title пустыми - генерируем только фоны без текста.' : ''}`
-      }],
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'HTTP-Referer': 'https://viso-pro.vercel.app',
+        'X-Title': 'VISO App',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'anthropic/claude-3.5-sonnet',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { 
+            role: 'user', 
+            content: `Тема: "${topic}"\nПлатформа: ${platform}\n${cleanMode ? 'ВАЖНО: Оставь все title пустыми - генерируем только фоны без текста.' : ''}`
+          }
+        ],
+        max_tokens: 2048,
+      }),
     });
 
-    const responseText = message.content[0].type === 'text' ? message.content[0].text : '';
+    if (!response.ok) {
+      throw new Error(`OpenRouter API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const responseText = data.choices?.[0]?.message?.content || '';
     const cleanedJson = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     const parsed = JSON.parse(cleanedJson);
     const concepts = parsed.concepts || [];
@@ -99,4 +116,3 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({ concepts: fallbackConcepts, fallback: true });
   }
 }
-
