@@ -14,29 +14,64 @@ const aspectDimensions: Record<AspectRatio, { width: number; height: number }> =
 }
 
 // Convert external images to base64 for export
-async function convertImagesToBase64(container: HTMLElement) {
+async function convertImagesToBase64(container: HTMLElement): Promise<void> {
   const images = container.querySelectorAll('img')
+  
   const promises = Array.from(images).map(async (img) => {
-    if (img.src.startsWith('data:') || img.src.startsWith('blob:')) return
+    if (img.src.startsWith('data:') || img.src.startsWith('blob:') || !img.src) return
+    
+    const originalSrc = img.src
     
     try {
-      const response = await fetch(img.src, { mode: 'cors' })
+      const url = new URL(originalSrc)
+      url.searchParams.set('_t', Date.now().toString())
+      
+      const response = await fetch(url.toString(), { 
+        mode: 'cors',
+        credentials: 'omit',
+        cache: 'no-cache'
+      })
+      
+      if (!response.ok) throw new Error('Failed to fetch')
+      
       const blob = await response.blob()
-      const reader = new FileReader()
       
       return new Promise<void>((resolve) => {
+        const reader = new FileReader()
         reader.onloadend = () => {
-          img.src = reader.result as string
+          if (reader.result) {
+            img.src = reader.result as string
+          }
           resolve()
         }
+        reader.onerror = () => resolve()
         reader.readAsDataURL(blob)
       })
     } catch (error) {
-      console.warn('Failed to convert image:', img.src)
+      console.warn('Failed to convert image:', originalSrc)
     }
   })
   
   await Promise.all(promises)
+}
+
+// Hide UI elements before export
+function prepareForExport(container: HTMLElement): (() => void) {
+  const elementsToHide = container.querySelectorAll('.export-hide')
+  const originalDisplay: string[] = []
+  
+  elementsToHide.forEach((el, i) => {
+    const htmlEl = el as HTMLElement
+    originalDisplay[i] = htmlEl.style.display
+    htmlEl.style.display = 'none'
+  })
+  
+  return () => {
+    elementsToHide.forEach((el, i) => {
+      const htmlEl = el as HTMLElement
+      htmlEl.style.display = originalDisplay[i]
+    })
+  }
 }
 
 export function MobileCanvas() {
@@ -60,6 +95,9 @@ export function MobileCanvas() {
     if (!slideRef.current || isExporting) return
     setIsExporting(true)
     
+    // Hide UI controls before export
+    const restoreUI = prepareForExport(slideRef.current)
+    
     try {
       // Convert external images to base64 to avoid CORS issues
       await convertImagesToBase64(slideRef.current)
@@ -79,6 +117,7 @@ export function MobileCanvas() {
     } catch (error) {
       console.error('Export failed:', error)
     } finally {
+      restoreUI()
       setIsExporting(false)
     }
   }, [activeSlide?.id, isExporting])

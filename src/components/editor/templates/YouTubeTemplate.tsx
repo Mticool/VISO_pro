@@ -135,9 +135,9 @@ export function YouTubeTemplate({
       {/* Watermark */}
       <Watermark />
 
-      {/* Controls */}
+      {/* Controls - Hidden during export */}
       {hasImage && (
-        <div className="absolute top-4 right-4 flex items-center gap-2">
+        <div className="absolute top-4 right-4 flex items-center gap-2 export-hide">
           <motion.button
             onClick={onUploadImage}
             className="p-2.5 rounded-xl bg-black/40 backdrop-blur-xl border border-white/10 text-white/70 hover:bg-black/60 hover:text-white transition-all"

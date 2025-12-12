@@ -29,29 +29,67 @@ const aspectDimensions: Record<AspectRatio, { width: number; height: number }> =
 type ViewMode = 'editor' | 'covers'
 
 // Convert external images to base64 for export
-async function convertImagesToBase64(container: HTMLElement) {
+async function convertImagesToBase64(container: HTMLElement): Promise<void> {
   const images = container.querySelectorAll('img')
+  
   const promises = Array.from(images).map(async (img) => {
-    if (img.src.startsWith('data:') || img.src.startsWith('blob:')) return
+    // Skip already converted or local images
+    if (img.src.startsWith('data:') || img.src.startsWith('blob:') || !img.src) return
+    
+    const originalSrc = img.src
     
     try {
-      const response = await fetch(img.src, { mode: 'cors' })
+      // Add timestamp to bust cache
+      const url = new URL(originalSrc)
+      url.searchParams.set('_t', Date.now().toString())
+      
+      const response = await fetch(url.toString(), { 
+        mode: 'cors',
+        credentials: 'omit',
+        cache: 'no-cache'
+      })
+      
+      if (!response.ok) throw new Error('Failed to fetch')
+      
       const blob = await response.blob()
-      const reader = new FileReader()
       
       return new Promise<void>((resolve) => {
+        const reader = new FileReader()
         reader.onloadend = () => {
-          img.src = reader.result as string
+          if (reader.result) {
+            img.src = reader.result as string
+          }
           resolve()
         }
+        reader.onerror = () => resolve()
         reader.readAsDataURL(blob)
       })
     } catch (error) {
-      console.warn('Failed to convert image:', img.src)
+      console.warn('Failed to convert image, keeping original:', originalSrc)
     }
   })
   
   await Promise.all(promises)
+}
+
+// Hide UI elements before export
+function prepareForExport(container: HTMLElement): (() => void) {
+  const elementsToHide = container.querySelectorAll('.export-hide')
+  const originalDisplay: string[] = []
+  
+  elementsToHide.forEach((el, i) => {
+    const htmlEl = el as HTMLElement
+    originalDisplay[i] = htmlEl.style.display
+    htmlEl.style.display = 'none'
+  })
+  
+  // Return restore function
+  return () => {
+    elementsToHide.forEach((el, i) => {
+      const htmlEl = el as HTMLElement
+      htmlEl.style.display = originalDisplay[i]
+    })
+  }
 }
 
 // ViewModeSwitcher component to avoid type narrowing issues
@@ -122,8 +160,12 @@ export function Canvas() {
     if (!slideRef.current || isExporting) return
     setIsExporting(true)
     
+    // Hide safe zones
     const safeZoneEl = slideRef.current.querySelector('.safe-zones-overlay') as HTMLElement
     if (safeZoneEl) safeZoneEl.style.display = 'none'
+    
+    // Hide UI controls (upload/refresh buttons)
+    const restoreUI = prepareForExport(slideRef.current)
     
     try {
       // Convert external images to base64 to avoid CORS issues
@@ -145,6 +187,8 @@ export function Canvas() {
       console.error('Export failed:', error)
       alert('Не удалось сохранить. Попробуйте ещё раз.')
     } finally {
+      // Restore hidden elements
+      restoreUI()
       if (safeZoneEl) safeZoneEl.style.display = ''
       setIsExporting(false)
     }

@@ -346,11 +346,11 @@ export function StandardTemplate({
           </motion.div>
         )}
 
-        {/* Image Controls */}
+        {/* Image Controls - Hidden during export */}
         {hasImage && (
           <motion.div 
             layout
-            className="absolute top-6 right-6 flex items-center gap-2"
+            className="absolute top-6 right-6 flex items-center gap-2 export-hide"
             transition={{ duration: 0.3 }}
           >
             <motion.button
