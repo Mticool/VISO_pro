@@ -13,6 +13,32 @@ const aspectDimensions: Record<AspectRatio, { width: number; height: number }> =
   youtube: { width: 400, height: 225 },
 }
 
+// Convert external images to base64 for export
+async function convertImagesToBase64(container: HTMLElement) {
+  const images = container.querySelectorAll('img')
+  const promises = Array.from(images).map(async (img) => {
+    if (img.src.startsWith('data:') || img.src.startsWith('blob:')) return
+    
+    try {
+      const response = await fetch(img.src, { mode: 'cors' })
+      const blob = await response.blob()
+      const reader = new FileReader()
+      
+      return new Promise<void>((resolve) => {
+        reader.onloadend = () => {
+          img.src = reader.result as string
+          resolve()
+        }
+        reader.readAsDataURL(blob)
+      })
+    } catch (error) {
+      console.warn('Failed to convert image:', img.src)
+    }
+  })
+  
+  await Promise.all(promises)
+}
+
 export function MobileCanvas() {
   const slideRef = useRef<HTMLDivElement>(null)
   const [isExporting, setIsExporting] = useState(false)
@@ -35,8 +61,13 @@ export function MobileCanvas() {
     setIsExporting(true)
     
     try {
+      // Convert external images to base64 to avoid CORS issues
+      await convertImagesToBase64(slideRef.current)
+      
       const dataUrl = await toPng(slideRef.current, {
-        quality: 1, pixelRatio: 3, cacheBust: true,
+        quality: 1, 
+        pixelRatio: 3, 
+        cacheBust: true,
         backgroundColor: '#000',
       })
       const link = document.createElement('a')
