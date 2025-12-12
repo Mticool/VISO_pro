@@ -1,11 +1,5 @@
-import { cn } from '../../lib/utils'
-
-interface ProBadgeProps {
-  className?: string
-}
-
 // PRO badge disabled - all features unlocked
-export function ProBadge({ className }: ProBadgeProps) {
+export function ProBadge() {
   return null
 }
 

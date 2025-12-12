@@ -176,7 +176,7 @@ export function ChatTemplate({
         {/* Input Area */}
         <div className="p-4 border-t border-white/10 font-sans relative">
           {/* Watermark */}
-          <Watermark className="absolute bottom-16 right-4" />
+          <Watermark />
           
           <div className="flex items-center gap-2 bg-[#2F2F2F] rounded-xl px-4 py-3">
             <span style={{ color: `${textColor}40` }} className="text-sm flex-1">

@@ -295,7 +295,7 @@ export function BrandingPanel() {
 
                 {/* Features Preview */}
                 <div className="grid grid-cols-3 gap-2 mb-6">
-                  {['Реализм', '3D Render', 'Anime'].map((style, i) => (
+                  {['Реализм', '3D Render', 'Anime'].map((style) => (
                     <div 
                       key={style}
                       className="p-3 rounded-xl bg-white/5 border border-white/5"

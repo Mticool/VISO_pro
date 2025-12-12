@@ -20,7 +20,7 @@ export function BottomSheet({ isOpen, onClose, title, children, height = 'half' 
     auto: 'max-h-[80vh]',
   }
 
-  const handleDragEnd = (event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
+  const handleDragEnd = (_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
     if (info.velocity.y > 500 || info.offset.y > 100) {
       onClose()
     }

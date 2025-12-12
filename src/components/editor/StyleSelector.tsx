@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { Check, Sparkles } from 'lucide-react'
 import { cn } from '../../lib/utils'

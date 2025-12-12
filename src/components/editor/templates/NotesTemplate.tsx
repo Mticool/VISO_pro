@@ -1,7 +1,6 @@
 import { RefObject, useState } from 'react'
 import type { Slide } from '../../../types'
 import type { FontFamily } from '../../../store/useStore'
-import { useStore } from '../../../store/useStore'
 import { cn } from '../../../lib/utils'
 import { MagicRewriteMenu } from '../../ui/MagicRewriteMenu'
 import { Watermark } from '../../ui/Watermark'

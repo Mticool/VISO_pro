@@ -48,12 +48,10 @@ export function TikTokTemplate({
   overlayOpacity,
   isRegenerating,
   onTitleChange,
-  onContentChange,
   onRegenerateImage,
   onUploadImage,
   fontFamily,
   textColor,
-  accentColor,
   brandHandle,
   brandLogoUrl,
   showSafeZones,
@@ -218,7 +216,7 @@ export function TikTokTemplate({
       </div>
 
       {/* Watermark */}
-      <Watermark className="bottom-32 right-20" />
+      <Watermark />
 
       {/* Controls */}
       {hasImage && (

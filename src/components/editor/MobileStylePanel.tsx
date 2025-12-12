@@ -1,4 +1,3 @@
-import { motion } from 'framer-motion'
 import { useStore, colorPalettes, platformConfig, type Platform } from '../../store/useStore'
 import { cn } from '../../lib/utils'
 import { Instagram, Send, Youtube, Video, Check } from 'lucide-react'

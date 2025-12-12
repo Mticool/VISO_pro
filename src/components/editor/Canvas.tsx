@@ -28,6 +28,43 @@ const aspectDimensions: Record<AspectRatio, { width: number; height: number }> =
 
 type ViewMode = 'editor' | 'covers'
 
+// ViewModeSwitcher component to avoid type narrowing issues
+function ViewModeSwitcher({ 
+  currentMode, 
+  onModeChange 
+}: { 
+  currentMode: ViewMode
+  onModeChange: (mode: ViewMode) => void 
+}) {
+  return (
+    <div className="flex items-center gap-1 p-1 bg-black/40 rounded-xl">
+      <button
+        onClick={() => onModeChange('editor')}
+        className={cn(
+          'px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
+          currentMode === 'editor' 
+            ? 'bg-white/10 text-white' 
+            : 'text-zinc-500 hover:text-zinc-400'
+        )}
+      >
+        Редактор
+      </button>
+      <button
+        onClick={() => onModeChange('covers')}
+        className={cn(
+          'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
+          currentMode === 'covers' 
+            ? 'bg-white/10 text-white' 
+            : 'text-zinc-500 hover:text-zinc-400'
+        )}
+      >
+        <Grid2X2 className="w-3.5 h-3.5" />
+        <span>Обложки</span>
+      </button>
+    </div>
+  )
+}
+
 export function Canvas() {
   const slideRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -111,32 +148,7 @@ export function Canvas() {
         {/* Toolbar */}
         <div className="flex items-center justify-between p-3 border-b border-white/5">
           <div className="flex items-center gap-2">
-            {/* View Mode Switcher */}
-            <div className="flex items-center gap-1 p-1 bg-black/40 rounded-xl">
-              <button
-                onClick={() => setViewMode('editor')}
-                className={cn(
-                  'px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
-                  viewMode === 'editor' 
-                    ? 'bg-white/10 text-white' 
-                    : 'text-zinc-500 hover:text-zinc-400'
-                )}
-              >
-                Редактор
-              </button>
-              <button
-                onClick={() => setViewMode('covers')}
-                className={cn(
-                  'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
-                  viewMode === 'covers' 
-                    ? 'bg-white/10 text-white' 
-                    : 'text-zinc-500 hover:text-zinc-400'
-                )}
-              >
-                <Grid2X2 className="w-3.5 h-3.5" />
-                <span>Обложки</span>
-              </button>
-            </div>
+            <ViewModeSwitcher currentMode={viewMode} onModeChange={setViewMode} />
           </div>
         </div>
 
@@ -191,30 +203,8 @@ export function Canvas() {
       <div className="flex items-center justify-between p-3 border-b border-white/5 gap-3 flex-wrap">
         <div className="flex items-center gap-1.5 flex-wrap">
           {/* View Mode Switcher */}
-          <div className="flex items-center gap-1 p-1 bg-black/40 rounded-xl mr-2">
-            <button
-              onClick={() => setViewMode('editor')}
-              className={cn(
-                'px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
-                viewMode === 'editor' 
-                  ? 'bg-white/10 text-white' 
-                  : 'text-zinc-500 hover:text-zinc-400'
-              )}
-            >
-              Редактор
-            </button>
-            <button
-              onClick={() => setViewMode('covers')}
-              className={cn(
-                'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
-                viewMode === 'covers' 
-                  ? 'bg-white/10 text-white' 
-                  : 'text-zinc-500 hover:text-zinc-400'
-              )}
-            >
-              <Grid2X2 className="w-3.5 h-3.5" />
-              <span>Обложки</span>
-            </button>
+          <div className="mr-2">
+            <ViewModeSwitcher currentMode={viewMode} onModeChange={setViewMode} />
           </div>
 
           {platform === 'instagram' && (

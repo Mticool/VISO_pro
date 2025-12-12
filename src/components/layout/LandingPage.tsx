@@ -230,7 +230,7 @@ export function LandingPage() {
           className="mt-6 flex flex-wrap items-center justify-center gap-2"
         >
           <span className="text-xs text-zinc-600">Попробуйте:</span>
-          {['Продуктивность', 'AI тренды', 'Личный бренд'].map((hint, i) => (
+          {['Продуктивность', 'AI тренды', 'Личный бренд'].map((hint) => (
             <button
               key={hint}
               onClick={() => setInputValue(hint)}

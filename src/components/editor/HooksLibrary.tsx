@@ -8,7 +8,7 @@ import { v4 as uuidv4 } from 'uuid'
 
 export function HooksLibrary() {
   const [expandedCategory, setExpandedCategory] = useState<string | null>('learning')
-  const { slides, activeSlideId, updateSlide, setActiveSlide } = useStore()
+  const { slides, activeSlideId, updateSlide } = useStore()
   
   const handleHookClick = (hook: HookTemplate) => {
     if (slides.length > 0 && activeSlideId) {

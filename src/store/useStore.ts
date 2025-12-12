@@ -56,6 +56,11 @@ interface StoreState {
   isResearching: boolean
   researchContext: string | null
   
+  // Pro Features (all users have Pro access for now)
+  isPro: boolean
+  dailyGenerations: number
+  showUpgradeModal: boolean
+  
   // Actions
   generateSlides: (topic: string) => Promise<void>
   updateSlide: (id: string, updates: Partial<Slide>) => void
@@ -80,6 +85,11 @@ interface StoreState {
   reorderSlides: (newOrder: Slide[]) => void
   setGeneratedCaption: (caption: string) => void
   setUseWebSearch: (use: boolean) => void
+  
+  // Pro Actions
+  setShowUpgradeModal: (show: boolean) => void
+  upgradeToPro: () => void
+  getRemainingGenerations: () => number
 }
 
 async function fetchStockImage(query: string): Promise<string> {
@@ -90,21 +100,6 @@ async function fetchStockImage(query: string): Promise<string> {
     return data.url
   } catch (error) {
     return 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&h=1000&fit=crop&q=80'
-  }
-}
-
-async function generateAIImage(prompt: string): Promise<string> {
-  try {
-    const response = await fetch('/api/images/ai', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt }),
-    })
-    if (!response.ok) throw new Error('Failed to generate AI image')
-    const data = await response.json()
-    return data.url
-  } catch (error) {
-    return fetchStockImage(prompt.split(' ').slice(0, 3).join(' '))
   }
 }
 
@@ -146,6 +141,11 @@ export const useStore = create<StoreState>()(
       useWebSearch: false,
       isResearching: false,
       researchContext: null,
+      
+      // Pro Features - everyone has Pro access
+      isPro: true,
+      dailyGenerations: 0,
+      showUpgradeModal: false,
 
       generateSlides: async (topic: string) => {
         const { platform, useWebSearch } = get()
@@ -304,6 +304,15 @@ export const useStore = create<StoreState>()(
       },
 
       reorderSlides: (newOrder) => set({ slides: newOrder }),
+      
+      // Pro Actions
+      setShowUpgradeModal: (show) => set({ showUpgradeModal: show }),
+      upgradeToPro: () => set({ isPro: true, dailyGenerations: 0 }),
+      getRemainingGenerations: () => {
+        const { isPro, dailyGenerations } = get()
+        if (isPro) return Infinity
+        return Math.max(0, 3 - dailyGenerations)
+      },
     }),
     {
       name: 'viso-storage',

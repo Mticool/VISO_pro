@@ -1,4 +1,4 @@
-import { RefObject, useState } from 'react'
+import { RefObject } from 'react'
 import { motion } from 'framer-motion'
 import { Loader2, RefreshCw, UploadCloud } from 'lucide-react'
 import type { Slide } from '../../../types'
@@ -31,10 +31,8 @@ export function YouTubeTemplate({
   overlayOpacity,
   isRegenerating,
   onTitleChange,
-  onContentChange,
   onRegenerateImage,
   onUploadImage,
-  fontFamily,
   textColor,
   accentColor,
   brandHandle,

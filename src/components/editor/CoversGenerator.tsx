@@ -78,18 +78,12 @@ export function CoversGenerator({ onSelectCover }: CoversGeneratorProps) {
         const styleConfig = conceptStyles[index] || conceptStyles[0]
         
         try {
-          // Fetch image based on concept's imagePrompt
-          const imgResponse = await fetch('/api/images/stock', {
-            method: 'GET',
-            headers: { 'Content-Type': 'application/json' },
-          })
-          
-          // Build URL with query
+          // Build URL with query and fetch image
           const query = concept.imagePrompt?.split(' ').slice(0, 5).join(' ') || styleConfig.styleDescription
           const imgUrl = `/api/images/stock?query=${encodeURIComponent(query)}&t=${Date.now() + index}`
           
-          const finalResponse = await fetch(imgUrl)
-          const imgData = await finalResponse.json()
+          const response = await fetch(imgUrl)
+          const imgData = await response.json()
 
           return {
             ...styleConfig,

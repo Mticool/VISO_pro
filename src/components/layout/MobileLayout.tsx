@@ -1,5 +1,5 @@
 import { useState, ReactNode } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import { Layers, Type, Palette, Settings, Download, Sparkles, ChevronLeft } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { BottomSheet } from '../ui/BottomSheet'

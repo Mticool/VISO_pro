@@ -398,6 +398,87 @@ export default defineConfig(({ mode }) => {
             }
           })
 
+          // ===== /api/generate-tags - Hashtags & SEO =====
+          server.middlewares.use('/api/generate-tags', async (req, res) => {
+            if (req.method === 'OPTIONS') {
+              res.setHeader('Access-Control-Allow-Origin', '*')
+              res.statusCode = 200
+              res.end()
+              return
+            }
+
+            if (req.method !== 'POST') {
+              res.statusCode = 405
+              res.end(JSON.stringify({ error: 'Method not allowed' }))
+              return
+            }
+
+            let body = ''
+            for await (const chunk of req) {
+              body += chunk
+            }
+
+            try {
+              const { topic, slideContent } = JSON.parse(body)
+              console.log(`🏷️ Генерация тегов для: "${topic}"`)
+
+              const anthropic = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY })
+
+              const tagsPrompt = `Ты — эксперт по SMM и SEO. Проанализируй тему и сгенерируй:
+
+1. 30 релевантных хештегов для Instagram/TikTok:
+   - 10 популярных на английском
+   - 10 нишевых на английском  
+   - 10 на русском
+   - Без символа #
+
+2. SEO Alt Text для обложки (до 125 символов, русский)
+3. Meta Description (до 160 символов, русский)
+
+Верни СТРОГО JSON:
+{
+  "hashtags": {
+    "popular_en": ["word1", "word2", ...],
+    "niche_en": ["word1", "word2", ...],
+    "russian": ["слово1", "слово2", ...]
+  },
+  "altText": "описание",
+  "metaDescription": "мета описание"
+}`
+
+              const message = await anthropic.messages.create({
+                model: 'claude-3-5-sonnet-20240620',
+                max_tokens: 1024,
+                system: tagsPrompt,
+                messages: [{ 
+                  role: 'user', 
+                  content: `Тема: "${topic}"${slideContent ? `\n\nКонтент: ${slideContent}` : ''}`
+                }],
+              })
+
+              const responseText = message.content[0].type === 'text' ? message.content[0].text : ''
+              const cleanedJson = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
+              const parsed = JSON.parse(cleanedJson)
+
+              res.setHeader('Content-Type', 'application/json')
+              res.statusCode = 200
+              res.end(JSON.stringify(parsed))
+            } catch (error) {
+              console.error('❌ Ошибка генерации тегов:', error)
+              res.statusCode = 200
+              res.end(JSON.stringify({
+                hashtags: {
+                  popular_en: ['motivation', 'success', 'entrepreneur', 'business', 'growth', 'mindset', 'goals', 'inspiration', 'lifestyle', 'money'],
+                  niche_en: ['entrepreneurlife', 'startupgrind', 'businesstips', 'growthhacking', 'hustlehard', 'buildyourbrand', 'digitalmarketing', 'contentcreator', 'solopreneur', 'sidehustle'],
+                  russian: ['мотивация', 'бизнес', 'успех', 'саморазвитие', 'деньги', 'цели', 'предприниматель', 'инвестиции', 'финансы', 'карьера']
+                },
+                altText: 'Инфографика на тему бизнеса и саморазвития',
+                metaDescription: 'Узнайте ключевые инсайты и практические советы.',
+                fallback: true
+              }))
+            }
+          })
+
           // ===== /api/generate-video - Video Generation =====
           server.middlewares.use('/api/generate-video', async (req, res) => {
             if (req.method === 'OPTIONS') {

@@ -1,8 +1,7 @@
 import { useRef } from 'react'
-import { motion } from 'framer-motion'
 import { useStore } from '../../store/useStore'
 import { cn } from '../../lib/utils'
-import { AtSign, Image, Upload, Globe, Trash2 } from 'lucide-react'
+import { AtSign, Image, Upload, Trash2 } from 'lucide-react'
 import { WebSearchToggle } from '../ui/WebSearchToggle'
 
 export function MobileSettingsPanel() {

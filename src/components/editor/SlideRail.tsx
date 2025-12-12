@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion, Reorder, AnimatePresence } from 'framer-motion'
-import { Plus, Trash2, Copy, GripVertical, Layers, Lightbulb, FileText, Instagram, Send, Youtube, Video, Copy as CopyIcon, Check, Settings, Film } from 'lucide-react'
+import { Plus, Trash2, Copy, GripVertical, Layers, Lightbulb, FileText, Instagram, Send, Youtube, Video, Copy as CopyIcon, Check, Settings, Film, Zap, Hash, PlusCircle, Loader2 } from 'lucide-react'
 import { useStore, platformConfig, type Platform } from '../../store/useStore'
 import { cn } from '../../lib/utils'
 import type { Slide } from '../../types'
@@ -9,6 +9,16 @@ import { MagicRewriteMenu } from '../ui/MagicRewriteMenu'
 import { ProFeature } from '../ui/ProBadge'
 import { StyleSelector, SlideCountSlider, visualStyles } from './StyleSelector'
 import { MotionPanel } from './MotionPanel'
+
+interface HashtagsData {
+  hashtags: {
+    popular_en: string[]
+    niche_en: string[]
+    russian: string[]
+  }
+  altText: string
+  metaDescription: string
+}
 
 type TabType = 'slides' | 'ideas' | 'caption' | 'style' | 'motion'
 
@@ -234,10 +244,75 @@ interface CaptionTabProps {
 }
 
 function CaptionTab({ caption, onCaptionChange, onCopy, copied, onRewrite }: CaptionTabProps) {
-  const { platform } = useStore()
+  const { platform, topic, slides } = useStore()
+  const [hashtagsData, setHashtagsData] = useState<HashtagsData | null>(null)
+  const [isGeneratingTags, setIsGeneratingTags] = useState(false)
+  const [tagsCopied, setTagsCopied] = useState(false)
+  const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set())
+  const [showSeoSection, setShowSeoSection] = useState(false)
+
+  const generateHashtags = async () => {
+    if (!topic) return
+    setIsGeneratingTags(true)
+    
+    try {
+      const slideContent = slides.map(s => `${s.title}: ${s.content}`).join('\n')
+      
+      const response = await fetch('/api/generate-tags', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic, slideContent }),
+      })
+      
+      const data = await response.json()
+      setHashtagsData(data)
+      
+      // Auto-select all tags
+      const allTags = [
+        ...data.hashtags.popular_en,
+        ...data.hashtags.niche_en,
+        ...data.hashtags.russian
+      ]
+      setSelectedTags(new Set(allTags))
+      setShowSeoSection(true)
+    } catch (error) {
+      console.error('Failed to generate tags:', error)
+    } finally {
+      setIsGeneratingTags(false)
+    }
+  }
+
+  const toggleTag = (tag: string) => {
+    const newSelected = new Set(selectedTags)
+    if (newSelected.has(tag)) {
+      newSelected.delete(tag)
+    } else {
+      newSelected.add(tag)
+    }
+    setSelectedTags(newSelected)
+  }
+
+  const copyAllTags = async () => {
+    const tags = Array.from(selectedTags).map(t => `#${t}`).join(' ')
+    await navigator.clipboard.writeText(tags)
+    setTagsCopied(true)
+    setTimeout(() => setTagsCopied(false), 2000)
+  }
+
+  const addTagsToCaption = () => {
+    const tags = Array.from(selectedTags).map(t => `#${t}`).join(' ')
+    onCaptionChange(caption ? `${caption}\n\n${tags}` : tags)
+  }
+
+  const allTags = hashtagsData ? [
+    ...hashtagsData.hashtags.popular_en,
+    ...hashtagsData.hashtags.niche_en,
+    ...hashtagsData.hashtags.russian
+  ] : []
   
   return (
-    <div className="flex-1 flex flex-col p-3">
+    <div className="flex-1 flex flex-col p-3 overflow-y-auto">
+      {/* Caption Section */}
       <div className="flex items-center justify-between mb-2">
         <span className="text-xs text-zinc-500">
           {platform === 'telegram' ? 'Текст поста' : 
@@ -270,7 +345,7 @@ function CaptionTab({ caption, onCaptionChange, onCopy, copied, onRewrite }: Cap
         onChange={(e) => onCaptionChange(e.target.value)}
         placeholder="Текст будет сгенерирован вместе со слайдами..."
         className={cn(
-          'flex-1 w-full p-3 rounded-xl resize-none',
+          'min-h-[140px] w-full p-3 rounded-xl resize-none',
           'bg-black/40 border border-white/5',
           'text-sm text-zinc-300 leading-relaxed',
           'placeholder:text-zinc-600',
@@ -280,11 +355,180 @@ function CaptionTab({ caption, onCaptionChange, onCopy, copied, onRewrite }: Cap
       />
       
       {caption && (
-        <p className="mt-2 text-[10px] text-zinc-600 text-center">
+        <p className="mt-1 text-[10px] text-zinc-600 text-center">
           {caption.length} символов
         </p>
       )}
+
+      {/* SEO & Tags Section */}
+      <div className="mt-4 pt-4 border-t border-white/5">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Hash className="w-4 h-4 text-violet-400" />
+            <span className="text-xs font-medium text-zinc-400">SEO & Теги</span>
+          </div>
+          
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={generateHashtags}
+            disabled={isGeneratingTags || !topic}
+            className={cn(
+              'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium',
+              'bg-gradient-to-r from-violet-600/80 to-indigo-600/80',
+              'hover:from-violet-500 hover:to-indigo-500',
+              'border border-violet-400/20',
+              'text-white transition-all',
+              'disabled:opacity-50 disabled:cursor-not-allowed'
+            )}
+          >
+            {isGeneratingTags ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <Zap className="w-3 h-3" />
+            )}
+            <span>Сгенерировать</span>
+          </motion.button>
+        </div>
+
+        {/* Hashtags Display */}
+        <AnimatePresence>
+          {hashtagsData && showSeoSection && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="space-y-3"
+            >
+              {/* Popular EN */}
+              <div>
+                <p className="text-[10px] text-zinc-600 mb-1.5">🔥 Популярные (EN)</p>
+                <div className="flex flex-wrap gap-1">
+                  {hashtagsData.hashtags.popular_en.map((tag) => (
+                    <TagChip 
+                      key={tag} 
+                      tag={tag} 
+                      isSelected={selectedTags.has(tag)}
+                      onClick={() => toggleTag(tag)}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {/* Niche EN */}
+              <div>
+                <p className="text-[10px] text-zinc-600 mb-1.5">🎯 Нишевые (EN)</p>
+                <div className="flex flex-wrap gap-1">
+                  {hashtagsData.hashtags.niche_en.map((tag) => (
+                    <TagChip 
+                      key={tag} 
+                      tag={tag} 
+                      isSelected={selectedTags.has(tag)}
+                      onClick={() => toggleTag(tag)}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {/* Russian */}
+              <div>
+                <p className="text-[10px] text-zinc-600 mb-1.5">🇷🇺 Русские</p>
+                <div className="flex flex-wrap gap-1">
+                  {hashtagsData.hashtags.russian.map((tag) => (
+                    <TagChip 
+                      key={tag} 
+                      tag={tag} 
+                      isSelected={selectedTags.has(tag)}
+                      onClick={() => toggleTag(tag)}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center gap-2 pt-2">
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={copyAllTags}
+                  className={cn(
+                    'flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium',
+                    'bg-white/5 border border-white/5',
+                    'text-zinc-400 hover:text-white hover:bg-white/10',
+                    'transition-all',
+                    tagsCopied && 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                  )}
+                >
+                  {tagsCopied ? <Check className="w-3 h-3" /> : <CopyIcon className="w-3 h-3" />}
+                  <span>{tagsCopied ? 'Скопировано!' : 'Копировать'}</span>
+                </motion.button>
+
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={addTagsToCaption}
+                  className={cn(
+                    'flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium',
+                    'bg-violet-500/20 border border-violet-500/30',
+                    'text-violet-400 hover:bg-violet-500/30',
+                    'transition-all'
+                  )}
+                >
+                  <PlusCircle className="w-3 h-3" />
+                  <span>К посту</span>
+                </motion.button>
+              </div>
+
+              {/* Selected count */}
+              <p className="text-[10px] text-zinc-600 text-center">
+                Выбрано: {selectedTags.size} из {allTags.length} тегов
+              </p>
+
+              {/* Alt Text */}
+              {hashtagsData.altText && (
+                <div className="p-2.5 bg-black/30 rounded-lg border border-white/5">
+                  <p className="text-[10px] text-zinc-500 mb-1">📷 Alt Text (SEO)</p>
+                  <p className="text-xs text-zinc-400">{hashtagsData.altText}</p>
+                </div>
+              )}
+
+              {/* Meta Description */}
+              {hashtagsData.metaDescription && (
+                <div className="p-2.5 bg-black/30 rounded-lg border border-white/5">
+                  <p className="text-[10px] text-zinc-500 mb-1">🔍 Meta Description</p>
+                  <p className="text-xs text-zinc-400">{hashtagsData.metaDescription}</p>
+                </div>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {!hashtagsData && !isGeneratingTags && (
+          <p className="text-[10px] text-zinc-600 text-center py-4">
+            Нажмите «Сгенерировать» для создания хештегов и SEO-описаний
+          </p>
+        )}
+      </div>
     </div>
+  )
+}
+
+// Tag Chip Component
+function TagChip({ tag, isSelected, onClick }: { tag: string; isSelected: boolean; onClick: () => void }) {
+  return (
+    <motion.button
+      whileHover={{ scale: 1.05 }}
+      whileTap={{ scale: 0.95 }}
+      onClick={onClick}
+      className={cn(
+        'px-2 py-1 rounded-md text-[10px] font-medium transition-all',
+        isSelected 
+          ? 'bg-violet-500/30 text-violet-300 border border-violet-500/40' 
+          : 'bg-white/5 text-zinc-500 border border-white/5 hover:bg-white/10'
+      )}
+    >
+      #{tag}
+    </motion.button>
   )
 }
 

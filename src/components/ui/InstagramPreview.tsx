@@ -1,7 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Heart, MessageCircle, Send, Bookmark, MoreHorizontal, Grid3X3, PlaySquare, User } from 'lucide-react'
+import { X, Grid3X3, PlaySquare, User } from 'lucide-react'
 import { useStore } from '../../store/useStore'
-import { cn } from '../../lib/utils'
 
 interface InstagramPreviewProps {
   isOpen: boolean
