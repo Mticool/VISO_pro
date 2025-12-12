@@ -1,0 +1,131 @@
+import Anthropic from '@anthropic-ai/sdk';
+import type { VercelRequest, VercelResponse } from '@vercel/node';
+
+const PLATFORM_PROMPTS: Record<string, string> = {
+  instagram: `Создай виральную карусель из 5-7 слайдов для Instagram.
+Первый слайд - обложка (type: "cover") с цепляющим заголовком.
+Последний слайд - призыв к действию (type: "cta").
+Остальные слайды - контент (type: "content").`,
+
+  telegram: `Создай ОДНУ картинку-заголовок для Telegram поста.
+Верни массив из 1 слайда (type: "cover").
+Заголовок должен быть интригующим и побуждать открыть пост.
+Caption должен быть полноценной статьёй с форматированием и эмодзи.`,
+
+  youtube: `Создай ОДНУ кликбейтную обложку (Thumbnail) для YouTube видео.
+Верни массив из 1 слайда (type: "cover").
+Заголовок: 3-5 слов МАКСИМУМ, вызывающий эмоции, кликбейтный.
+imagePrompt должен содержать: "hyper-realistic, emotional, youtube thumbnail style".
+Caption - это описание видео с хештегами.`,
+
+  tiktok: `Создай ОДНУ обложку для TikTok видео.
+Верни массив из 1 слайда (type: "cover").
+Заголовок должен цеплять внимание за 1 секунду.
+Текст короткий и ударный.
+Caption - короткое описание + хештеги.`,
+};
+
+const SYSTEM_PROMPT_BASE = `ВАЖНО: Ты — русскоязычный эксперт по SMM и контент-маркетингу. Весь генерируемый контент ДОЛЖЕН БЫТЬ СТРОГО НА РУССКОМ ЯЗЫКЕ.
+
+Тон голоса: Пиши живо, без канцеляризмов, используй "ты". Избегай штампов вроде "раскрой потенциал".
+
+Ты ОБЯЗАН вернуть ответ СТРОГО в формате JSON (без markdown блоков):
+{
+  "slides": [
+    {
+      "id": "1",
+      "type": "cover",
+      "title": "Заголовок на русском",
+      "content": "Подзаголовок на русском",
+      "imageKeyword": "english keywords for stock photo",
+      "imagePrompt": "detailed english prompt for AI image generation"
+    }
+  ],
+  "caption": "Полный текст поста для публикации. Для Instagram/TikTok включи хештеги. Для Telegram - полноценная статья."
+}
+
+ПРАВИЛА:
+- imageKeyword — ключевые слова НА АНГЛИЙСКОМ для поиска фото
+- imagePrompt — детальный промпт НА АНГЛИЙСКОМ для AI-генерации
+- Заголовки: цепляющие, НА РУССКОМ
+- Контент: до 15 слов, НА РУССКОМ
+- Caption: готовый текст для публикации НА РУССКОМ`;
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  try {
+    const { topic, platform = 'instagram', researchContext } = req.body;
+
+    if (!topic) {
+      return res.status(400).json({ error: 'Topic is required' });
+    }
+
+    const platformPrompt = PLATFORM_PROMPTS[platform] || PLATFORM_PROMPTS.instagram;
+    
+    // Build system prompt with optional research context
+    let systemPrompt = `${SYSTEM_PROMPT_BASE}\n\n${platformPrompt}`;
+    
+    if (researchContext) {
+      systemPrompt += `\n\n📊 АКТУАЛЬНАЯ ИНФОРМАЦИЯ ИЗ ИНТЕРНЕТА (используй эти данные):\n${researchContext}\n\nИспользуй эту свежую информацию для создания актуального и информативного контента.`;
+    }
+
+    console.log(`🎨 Генерация для ${platform}: "${topic}"${researchContext ? ' (with research)' : ''}`);
+
+    const anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    });
+
+    const message = await anthropic.messages.create({
+      model: 'claude-3-5-sonnet-20240620',
+      max_tokens: 2048,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: `Тема: "${topic}"` }],
+    });
+
+    const responseText = message.content[0].type === 'text' ? message.content[0].text : '';
+    const cleanedJson = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    const parsed = JSON.parse(cleanedJson);
+    const slides = parsed.slides || parsed;
+    const caption = parsed.caption || '';
+
+    const slidesWithIds = (Array.isArray(slides) ? slides : [slides]).map((slide: any, index: number) => ({
+      id: `slide-${Date.now()}-${index}`,
+      type: slide.type || 'content',
+      title: slide.title,
+      content: slide.content,
+      imageKeyword: slide.imageKeyword,
+      imagePrompt: slide.imagePrompt,
+    }));
+
+    console.log(`✅ Создано ${slidesWithIds.length} слайдов`);
+
+    return res.status(200).json({ slides: slidesWithIds, caption });
+
+  } catch (error) {
+    console.error('❌ Ошибка API:', error);
+    return res.status(200).json({ 
+      slides: [{ 
+        id: `s-${Date.now()}`, 
+        type: 'cover', 
+        title: 'Ваша тема', 
+        content: 'Попробуйте ещё раз', 
+        imageKeyword: 'abstract dark' 
+      }],
+      caption: '',
+      fallback: true 
+    });
+  }
+}
+

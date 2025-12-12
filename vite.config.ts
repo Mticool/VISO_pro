@@ -1,0 +1,524 @@
+import { defineConfig, loadEnv } from 'vite'
+import react from '@vitejs/plugin-react'
+import Anthropic from '@anthropic-ai/sdk'
+
+const PLATFORM_PROMPTS: Record<string, string> = {
+  instagram: `Создай виральную карусель из 5-7 слайдов для Instagram.
+Первый слайд - обложка (type: "cover") с цепляющим заголовком.
+Последний слайд - призыв к действию (type: "cta").
+Остальные слайды - контент (type: "content").`,
+
+  telegram: `Создай ОДНУ картинку-заголовок для Telegram поста.
+Верни массив из 1 слайда (type: "cover").
+Заголовок должен быть интригующим и побуждать открыть пост.
+Caption должен быть полноценной статьёй с форматированием и эмодзи.`,
+
+  youtube: `Создай ОДНУ кликбейтную обложку (Thumbnail) для YouTube видео.
+Верни массив из 1 слайда (type: "cover").
+Заголовок: 3-5 слов МАКСИМУМ, вызывающий эмоции, кликбейтный.
+imagePrompt должен содержать: "hyper-realistic, emotional, youtube thumbnail style".
+Caption - это описание видео с хештегами.`,
+
+  tiktok: `Создай ОДНУ обложку для TikTok видео.
+Верни массив из 1 слайда (type: "cover").
+Заголовок должен цеплять внимание за 1 секунду.
+Текст короткий и ударный.
+Caption - короткое описание + хештеги.`,
+}
+
+const SYSTEM_PROMPT_BASE = `ВАЖНО: Ты — русскоязычный эксперт по SMM и контент-маркетингу. Весь генерируемый контент ДОЛЖЕН БЫТЬ СТРОГО НА РУССКОМ ЯЗЫКЕ.
+
+Тон голоса: Пиши живо, без канцеляризмов, используй "ты". Избегай штампов вроде "раскрой потенциал".
+
+Ты ОБЯЗАН вернуть ответ СТРОГО в формате JSON (без markdown блоков):
+{
+  "slides": [
+    {
+      "id": "1",
+      "type": "cover",
+      "title": "Заголовок на русском",
+      "content": "Подзаголовок на русском",
+      "imageKeyword": "english keywords for stock photo",
+      "imagePrompt": "detailed english prompt for AI image generation"
+    }
+  ],
+  "caption": "Полный текст поста для публикации. Для Instagram/TikTok включи хештеги. Для Telegram - полноценная статья."
+}
+
+ПРАВИЛА:
+- imageKeyword — ключевые слова НА АНГЛИЙСКОМ для поиска фото
+- imagePrompt — детальный промпт НА АНГЛИЙСКОМ для AI-генерации
+- Заголовки: цепляющие, НА РУССКОМ
+- Контент: до 15 слов, НА РУССКОМ
+- Caption: готовый текст для публикации НА РУССКОМ`
+
+const REWRITE_COMMANDS: Record<string, string> = {
+  shorten: 'Сократи текст, сохранив главную мысль.',
+  funny: 'Добавь юмора и иронии.',
+  formal: 'Перепиши в официальном деловом стиле.',
+  clickbait: 'Сделай максимально кликбейтным.',
+  fix: 'Исправь ошибки, улучши читаемость.',
+}
+
+const BATCH_SYSTEM_PROMPT = `Ты создаёшь 4 РАЗНЫЕ концепции обложек для одной темы.
+Каждая концепция должна быть уникальной по стилю и подходу.
+
+Верни СТРОГО JSON (без markdown):
+{
+  "concepts": [
+    {
+      "style": "emotional",
+      "title": "Короткий цепляющий заголовок (3-5 слов, РУССКИЙ)",
+      "imagePrompt": "emotional close-up portrait, dramatic lighting, human face with strong emotion, cinematic, 4k, professional photography"
+    },
+    {
+      "style": "minimal",
+      "title": "Минималистичный заголовок (РУССКИЙ)",
+      "imagePrompt": "minimalist background, clean design, simple geometric shapes, lots of negative space, modern aesthetic, high contrast"
+    },
+    {
+      "style": "3d",
+      "title": "Яркий заголовок (РУССКИЙ)",
+      "imagePrompt": "3d render, cinema4d, octane render, vibrant neon colors, abstract floating shapes, futuristic, glossy materials"
+    },
+    {
+      "style": "mystery",
+      "title": "Интригующий заголовок (РУССКИЙ)",
+      "imagePrompt": "mysterious atmosphere, dark moody lighting, silhouette, dramatic shadows, fog, cinematic noir style"
+    }
+  ]
+}
+
+ПРАВИЛА:
+- Заголовки: ТОЛЬКО на русском, короткие (3-5 слов), цепляющие
+- imagePrompt: ТОЛЬКО на английском, детальные, разные для каждого стиля
+- Каждая концепция должна быть УНИКАЛЬНОЙ
+- Стили должны сильно отличаться друг от друга`
+
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '')
+  
+  return {
+    plugins: [
+      react(),
+      {
+        name: 'api-proxy',
+        configureServer(server) {
+          // ===== /api/research - Perplexity AI (Web Search) =====
+          server.middlewares.use('/api/research', async (req, res) => {
+            if (req.method === 'OPTIONS') {
+              res.setHeader('Access-Control-Allow-Origin', '*')
+              res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
+              res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+              res.statusCode = 200
+              res.end()
+              return
+            }
+
+            if (req.method !== 'POST') {
+              res.statusCode = 405
+              res.end(JSON.stringify({ error: 'Method not allowed' }))
+              return
+            }
+
+            let body = ''
+            for await (const chunk of req) {
+              body += chunk
+            }
+
+            try {
+              const { topic } = JSON.parse(body)
+
+              if (!topic) {
+                res.statusCode = 400
+                res.end(JSON.stringify({ error: 'Topic is required' }))
+                return
+              }
+
+              console.log(`🔍 Perplexity Research: "${topic}"`)
+
+              const perplexityKey = env.PERPLEXITY_API_KEY
+
+              if (!perplexityKey) {
+                console.log('⚠️ No Perplexity API key, skipping research')
+                res.setHeader('Content-Type', 'application/json')
+                res.statusCode = 200
+                res.end(JSON.stringify({ context: '', skipped: true }))
+                return
+              }
+
+              const response = await fetch('https://api.perplexity.ai/chat/completions', {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${perplexityKey}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  model: 'llama-3.1-sonar-large-128k-online',
+                  messages: [
+                    {
+                      role: 'system',
+                      content: 'Ты — исследователь. Найди самую свежую и актуальную информацию по теме. Верни краткую выжимку на русском языке: ключевые факты, статистику, тренды, новости. Формат: bullet points. Максимум 300 слов.'
+                    },
+                    {
+                      role: 'user',
+                      content: `Найди актуальную информацию по теме: "${topic}"`
+                    }
+                  ],
+                  max_tokens: 1024,
+                  temperature: 0.2,
+                }),
+              })
+
+              if (!response.ok) {
+                throw new Error(`Perplexity API error: ${response.status}`)
+              }
+
+              const data = await response.json()
+              const context = data.choices?.[0]?.message?.content || ''
+
+              console.log(`✅ Research complete (${context.length} chars)`)
+
+              res.setHeader('Content-Type', 'application/json')
+              res.statusCode = 200
+              res.end(JSON.stringify({ context }))
+
+            } catch (error) {
+              console.error('❌ Research error:', error)
+              res.setHeader('Content-Type', 'application/json')
+              res.statusCode = 200
+              res.end(JSON.stringify({ context: '', error: true }))
+            }
+          })
+
+          // ===== /api/generate - Claude AI =====
+          server.middlewares.use('/api/generate', async (req, res) => {
+            if (req.method === 'OPTIONS') {
+              res.setHeader('Access-Control-Allow-Origin', '*')
+              res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
+              res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+              res.statusCode = 200
+              res.end()
+              return
+            }
+
+            if (req.method !== 'POST') {
+              res.statusCode = 405
+              res.end(JSON.stringify({ error: 'Method not allowed' }))
+              return
+            }
+
+            let body = ''
+            for await (const chunk of req) {
+              body += chunk
+            }
+
+            try {
+              const { topic, platform = 'instagram', researchContext } = JSON.parse(body)
+
+              if (!topic) {
+                res.statusCode = 400
+                res.setHeader('Content-Type', 'application/json')
+                res.end(JSON.stringify({ error: 'Topic is required' }))
+                return
+              }
+
+              const platformPrompt = PLATFORM_PROMPTS[platform] || PLATFORM_PROMPTS.instagram
+              
+              // Build system prompt with optional research context
+              let systemPrompt = `${SYSTEM_PROMPT_BASE}\n\n${platformPrompt}`
+              
+              if (researchContext) {
+                systemPrompt += `\n\n📊 АКТУАЛЬНАЯ ИНФОРМАЦИЯ ИЗ ИНТЕРНЕТА (используй эти данные):\n${researchContext}\n\nИспользуй эту свежую информацию для создания актуального и информативного контента.`
+              }
+
+              console.log(`🎨 Генерация для ${platform}: "${topic}"${researchContext ? ' (with research)' : ''}`)
+
+              const anthropic = new Anthropic({
+                apiKey: env.ANTHROPIC_API_KEY,
+              })
+
+              const message = await anthropic.messages.create({
+                model: 'claude-3-5-sonnet-20240620',
+                max_tokens: 2048,
+                system: systemPrompt,
+                messages: [{ role: 'user', content: `Тема: "${topic}"` }],
+              })
+
+              const responseText = message.content[0].type === 'text' ? message.content[0].text : ''
+              const cleanedJson = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
+              const parsed = JSON.parse(cleanedJson)
+              const slides = parsed.slides || parsed
+              const caption = parsed.caption || ''
+
+              const slidesWithIds = (Array.isArray(slides) ? slides : [slides]).map((slide: any, index: number) => ({
+                id: `slide-${Date.now()}-${index}`,
+                type: slide.type || 'content',
+                title: slide.title,
+                content: slide.content,
+                imageKeyword: slide.imageKeyword,
+                imagePrompt: slide.imagePrompt,
+              }))
+
+              console.log(`✅ Создано ${slidesWithIds.length} слайдов`)
+
+              res.setHeader('Content-Type', 'application/json')
+              res.statusCode = 200
+              res.end(JSON.stringify({ slides: slidesWithIds, caption }))
+
+            } catch (error) {
+              console.error('❌ Ошибка API:', error)
+              res.setHeader('Content-Type', 'application/json')
+              res.statusCode = 200
+              res.end(JSON.stringify({ 
+                slides: [{ id: `s-${Date.now()}`, type: 'cover', title: 'Ваша тема', content: 'Попробуйте ещё раз', imageKeyword: 'abstract dark' }],
+                caption: '',
+                fallback: true 
+              }))
+            }
+          })
+
+          // ===== /api/generate-batch - Batch Cover Generation (4 variants) =====
+          server.middlewares.use('/api/generate-batch', async (req, res) => {
+            if (req.method === 'OPTIONS') {
+              res.setHeader('Access-Control-Allow-Origin', '*')
+              res.statusCode = 200
+              res.end()
+              return
+            }
+
+            if (req.method !== 'POST') {
+              res.statusCode = 405
+              res.end(JSON.stringify({ error: 'Method not allowed' }))
+              return
+            }
+
+            let body = ''
+            for await (const chunk of req) {
+              body += chunk
+            }
+
+            try {
+              const { topic, platform = 'youtube', cleanMode = false } = JSON.parse(body)
+
+              if (!topic) {
+                res.statusCode = 400
+                res.end(JSON.stringify({ error: 'Topic is required' }))
+                return
+              }
+
+              console.log(`🎨 Пакетная генерация 4 вариантов: "${topic}"`)
+
+              const anthropic = new Anthropic({
+                apiKey: env.ANTHROPIC_API_KEY,
+              })
+
+              const systemPrompt = cleanMode 
+                ? BATCH_SYSTEM_PROMPT.replace(/title.*РУССКИЙ\)/g, 'title: ""') 
+                : BATCH_SYSTEM_PROMPT
+
+              const message = await anthropic.messages.create({
+                model: 'claude-3-5-sonnet-20240620',
+                max_tokens: 2048,
+                system: systemPrompt,
+                messages: [{ 
+                  role: 'user', 
+                  content: `Тема: "${topic}"\nПлатформа: ${platform}\n${cleanMode ? 'ВАЖНО: Оставь все title пустыми - генерируем только фоны без текста.' : ''}`
+                }],
+              })
+
+              const responseText = message.content[0].type === 'text' ? message.content[0].text : ''
+              const cleanedJson = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
+              const parsed = JSON.parse(cleanedJson)
+              const concepts = parsed.concepts || []
+
+              console.log(`✅ Сгенерировано ${concepts.length} концепций`)
+
+              res.setHeader('Content-Type', 'application/json')
+              res.statusCode = 200
+              res.end(JSON.stringify({ concepts }))
+
+            } catch (error) {
+              console.error('❌ Ошибка пакетной генерации:', error)
+              
+              const fallbackConcepts = [
+                { style: 'emotional', title: 'Эмоциональный вариант', imagePrompt: 'emotional portrait dramatic lighting' },
+                { style: 'minimal', title: 'Минималистичный вариант', imagePrompt: 'minimalist clean background modern' },
+                { style: '3d', title: '3D вариант', imagePrompt: '3d render vibrant colors abstract' },
+                { style: 'mystery', title: 'Загадочный вариант', imagePrompt: 'mysterious dark moody atmosphere' },
+              ]
+
+              res.setHeader('Content-Type', 'application/json')
+              res.statusCode = 200
+              res.end(JSON.stringify({ concepts: fallbackConcepts, fallback: true }))
+            }
+          })
+
+          // ===== /api/rewrite - Magic Rewrite =====
+          server.middlewares.use('/api/rewrite', async (req, res) => {
+            if (req.method === 'OPTIONS') {
+              res.setHeader('Access-Control-Allow-Origin', '*')
+              res.statusCode = 200
+              res.end()
+              return
+            }
+
+            if (req.method !== 'POST') {
+              res.statusCode = 405
+              res.end(JSON.stringify({ error: 'Method not allowed' }))
+              return
+            }
+
+            let body = ''
+            for await (const chunk of req) {
+              body += chunk
+            }
+
+            try {
+              const { text, command } = JSON.parse(body)
+              const commandInstruction = REWRITE_COMMANDS[command] || REWRITE_COMMANDS.fix
+
+              const anthropic = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY })
+
+              const message = await anthropic.messages.create({
+                model: 'claude-3-5-sonnet-20240620',
+                max_tokens: 1024,
+                system: `Перепиши текст. Отвечай ТОЛЬКО готовым текстом на русском, без пояснений.`,
+                messages: [{ role: 'user', content: `Текст: "${text}"\n\nЗадача: ${commandInstruction}` }],
+              })
+
+              const result = message.content[0].type === 'text' ? message.content[0].text.trim() : text
+
+              res.setHeader('Content-Type', 'application/json')
+              res.statusCode = 200
+              res.end(JSON.stringify({ result }))
+            } catch (error) {
+              res.statusCode = 500
+              res.end(JSON.stringify({ error: 'Failed to rewrite' }))
+            }
+          })
+
+          // ===== /api/generate-video - Video Generation =====
+          server.middlewares.use('/api/generate-video', async (req, res) => {
+            if (req.method === 'OPTIONS') {
+              res.setHeader('Access-Control-Allow-Origin', '*')
+              res.statusCode = 200
+              res.end()
+              return
+            }
+
+            if (req.method !== 'POST') {
+              res.statusCode = 405
+              res.end(JSON.stringify({ error: 'Method not allowed' }))
+              return
+            }
+
+            let body = ''
+            for await (const chunk of req) { body += chunk }
+
+            try {
+              const { imageUrl, effect } = JSON.parse(body)
+              console.log(`🎬 Генерация видео: эффект "${effect}"`)
+
+              await new Promise(resolve => setTimeout(resolve, 3000))
+
+              const mockVideos: Record<string, string> = {
+                'zoom-in': 'https://assets.mixkit.co/videos/preview/mixkit-abstract-flowing-neon-lights-1240-large.mp4',
+                'pan': 'https://assets.mixkit.co/videos/preview/mixkit-glowing-neon-lights-1174-large.mp4',
+                'fire': 'https://assets.mixkit.co/videos/preview/mixkit-fire-and-sparks-1546-large.mp4',
+                'glitch': 'https://assets.mixkit.co/videos/preview/mixkit-computer-code-on-screen-1172-large.mp4',
+              }
+
+              res.setHeader('Content-Type', 'application/json')
+              res.statusCode = 200
+              res.end(JSON.stringify({ videoUrl: mockVideos[effect] || mockVideos['zoom-in'], duration: 4, effect }))
+            } catch (error) {
+              res.statusCode = 500
+              res.end(JSON.stringify({ error: 'Video generation failed' }))
+            }
+          })
+
+          // ===== /api/images/stock - Unsplash =====
+          server.middlewares.use('/api/images/stock', async (req, res) => {
+            if (req.method === 'OPTIONS') { res.statusCode = 200; res.end(); return }
+
+            try {
+              const url = new URL(req.url || '', `http://${req.headers.host}`)
+              const query = url.searchParams.get('query') || 'abstract dark'
+
+              const unsplashUrl = new URL('https://api.unsplash.com/photos/random')
+              unsplashUrl.searchParams.set('client_id', env.UNSPLASH_ACCESS_KEY)
+              unsplashUrl.searchParams.set('query', query)
+              unsplashUrl.searchParams.set('orientation', 'portrait')
+
+              const response = await fetch(unsplashUrl.toString())
+              const data = await response.json()
+              const photo = Array.isArray(data) ? data[0] : data
+
+              res.setHeader('Content-Type', 'application/json')
+              res.statusCode = 200
+              res.end(JSON.stringify({ url: photo?.urls?.regular, source: 'unsplash' }))
+            } catch {
+              res.statusCode = 200
+              res.end(JSON.stringify({ url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800', fallback: true }))
+            }
+          })
+
+          // ===== /api/images/ai - AI Generation =====
+          server.middlewares.use('/api/images/ai', async (req, res) => {
+            if (req.method === 'OPTIONS') { res.statusCode = 200; res.end(); return }
+            if (req.method !== 'POST') { res.statusCode = 405; res.end(); return }
+
+            let body = ''
+            for await (const chunk of req) { body += chunk }
+
+            try {
+              const { prompt } = JSON.parse(body)
+              const unsplashUrl = new URL('https://api.unsplash.com/photos/random')
+              unsplashUrl.searchParams.set('client_id', env.UNSPLASH_ACCESS_KEY)
+              unsplashUrl.searchParams.set('query', prompt?.split(' ').slice(0, 3).join(' ') || 'abstract')
+              unsplashUrl.searchParams.set('orientation', 'portrait')
+
+              const response = await fetch(unsplashUrl.toString())
+              const data = await response.json()
+              const photo = Array.isArray(data) ? data[0] : data
+
+              res.setHeader('Content-Type', 'application/json')
+              res.statusCode = 200
+              res.end(JSON.stringify({ url: photo?.urls?.regular, source: 'ai' }))
+            } catch {
+              res.statusCode = 500
+              res.end(JSON.stringify({ error: 'AI generation failed' }))
+            }
+          })
+
+          // ===== /api/images - Legacy =====
+          server.middlewares.use('/api/images', async (req, res) => {
+            if (req.url?.startsWith('/stock') || req.url?.startsWith('/ai')) return
+
+            try {
+              const url = new URL(req.url || '', `http://${req.headers.host}`)
+              const query = url.searchParams.get('query') || 'abstract dark'
+
+              const unsplashUrl = new URL('https://api.unsplash.com/photos/random')
+              unsplashUrl.searchParams.set('client_id', env.UNSPLASH_ACCESS_KEY)
+              unsplashUrl.searchParams.set('query', query)
+              unsplashUrl.searchParams.set('orientation', 'portrait')
+
+              const response = await fetch(unsplashUrl.toString())
+              const data = await response.json()
+              const photo = Array.isArray(data) ? data[0] : data
+
+              res.setHeader('Content-Type', 'application/json')
+              res.statusCode = 200
+              res.end(JSON.stringify({ url: photo?.urls?.regular }))
+            } catch {
+              res.statusCode = 200
+              res.end(JSON.stringify({ url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800' }))
+            }
+          })
+        },
+      },
+    ],
+  }
+})
