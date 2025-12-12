@@ -83,8 +83,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     console.log(`🎨 Генерация для ${platform}: "${topic}"${researchContext ? ' (with research)' : ''}`);
 
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    
+    if (!apiKey) {
+      console.error('❌ ANTHROPIC_API_KEY not found in environment');
+      return res.status(500).json({ 
+        error: 'API key not configured',
+        debug: 'ANTHROPIC_API_KEY is missing'
+      });
+    }
+
     const anthropic = new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY,
+      apiKey: apiKey,
     });
 
     const message = await anthropic.messages.create({
@@ -113,18 +123,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return res.status(200).json({ slides: slidesWithIds, caption });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('❌ Ошибка API:', error);
+    
+    const errorMessage = error?.message || 'Unknown error';
+    const errorStatus = error?.status || 500;
+    
     return res.status(200).json({ 
       slides: [{ 
         id: `s-${Date.now()}`, 
         type: 'cover', 
-        title: 'Ваша тема', 
-        content: 'Попробуйте ещё раз', 
+        title: 'Ошибка генерации', 
+        content: errorMessage.substring(0, 100), 
         imageKeyword: 'abstract dark' 
       }],
       caption: '',
-      fallback: true 
+      fallback: true,
+      error: errorMessage,
+      errorStatus: errorStatus
     });
   }
 }
