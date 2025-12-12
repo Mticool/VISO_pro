@@ -87,7 +87,7 @@ export function WebSearchToggle({ compact = false }: WebSearchToggleProps) {
         </div>
         <p className="text-[10px] text-zinc-600 mt-0.5">
           {useWebSearch 
-            ? 'Поиск актуальной информации через Perplexity AI' 
+            ? 'Анализирует свежие новости и тренды в реальном времени' 
             : 'Использовать только базовые знания AI'
           }
         </p>
