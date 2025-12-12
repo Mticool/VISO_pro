@@ -183,8 +183,8 @@ export function TelegramTemplate({
           </div>
         </div>
 
-        {/* Telegram Stats Bar */}
-        <div className="flex items-center gap-4 mt-4 pt-3 border-t border-white/10">
+        {/* Telegram Stats Bar - Hidden during export */}
+        <div className="flex items-center gap-4 mt-4 pt-3 border-t border-white/10 export-hide">
           <div className="flex items-center gap-1.5">
             <Eye className="w-4 h-4 text-white/50" />
             <span className="text-xs text-white/50">12.5K</span>
@@ -200,8 +200,8 @@ export function TelegramTemplate({
         </div>
       </div>
 
-      {/* Telegram Style Badge */}
-      <div className="absolute top-4 right-4">
+      {/* Telegram Style Badge - Hidden during export */}
+      <div className="absolute top-4 right-4 export-hide">
         <div 
           className="px-3 py-1.5 rounded-full text-xs font-medium"
           style={{ 
