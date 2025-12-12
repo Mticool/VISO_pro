@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion, Reorder, AnimatePresence } from 'framer-motion'
-import { Plus, Trash2, Copy, GripVertical, Layers, Lightbulb, FileText, Instagram, Send, Youtube, Video, Copy as CopyIcon, Check, Settings, Film, Zap, Hash, PlusCircle, Loader2 } from 'lucide-react'
+import { Plus, Trash2, Copy, GripVertical, Layers, Lightbulb, FileText, Instagram, Send, Youtube, Video, Copy as CopyIcon, Check, Settings, Zap, Hash, PlusCircle, Loader2, Grid } from 'lucide-react'
 import { useStore, platformConfig, type Platform } from '../../store/useStore'
 import { cn } from '../../lib/utils'
 import type { Slide } from '../../types'
@@ -8,7 +8,7 @@ import { HooksLibrary } from './HooksLibrary'
 import { MagicRewriteMenu } from '../ui/MagicRewriteMenu'
 import { ProFeature } from '../ui/ProBadge'
 import { StyleSelector, SlideCountSlider, visualStyles } from './StyleSelector'
-import { MotionPanel } from './MotionPanel'
+import { VideoCollage } from './VideoCollage'
 
 interface HashtagsData {
   hashtags: {
@@ -20,7 +20,7 @@ interface HashtagsData {
   metaDescription: string
 }
 
-type TabType = 'slides' | 'ideas' | 'caption' | 'style' | 'motion'
+type TabType = 'slides' | 'ideas' | 'caption' | 'style' | 'collage'
 
 const platformIcons: Record<Platform, typeof Instagram> = {
   instagram: Instagram,
@@ -50,8 +50,6 @@ export function SlideRail() {
     setGeneratedCaption,
     isPro,
   } = useStore()
-
-  const activeSlide = slides.find(s => s.id === activeSlideId)
 
   const handleCopyCaption = async () => {
     await navigator.clipboard.writeText(generatedCaption)
@@ -100,7 +98,7 @@ export function SlideRail() {
             { id: 'slides', icon: Layers, label: 'Слайды' },
             { id: 'caption', icon: FileText, label: 'Текст' },
             { id: 'style', icon: Settings, label: 'Стиль' },
-            { id: 'motion', icon: Film, label: 'Motion' },
+            { id: 'collage', icon: Grid, label: 'Видео' },
             { id: 'ideas', icon: Lightbulb, label: 'Идеи' },
           ].map((tab) => (
             <button
@@ -185,11 +183,8 @@ export function SlideRail() {
           onSlideCountChange={setSlideCount}
           isPro={isPro}
         />
-      ) : activeTab === 'motion' ? (
-        <MotionPanel 
-          slideId={activeSlide?.id || ''} 
-          slideImage={activeSlide?.image}
-        />
+      ) : activeTab === 'collage' ? (
+        <VideoCollage />
       ) : (
         <HooksLibrary />
       )}

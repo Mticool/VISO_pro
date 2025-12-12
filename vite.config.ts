@@ -514,46 +514,6 @@ export default defineConfig(({ mode }) => {
             }
           })
 
-          // ===== /api/generate-video - Video Generation =====
-          server.middlewares.use('/api/generate-video', async (req, res) => {
-            if (req.method === 'OPTIONS') {
-              res.setHeader('Access-Control-Allow-Origin', '*')
-              res.statusCode = 200
-              res.end()
-              return
-            }
-
-            if (req.method !== 'POST') {
-              res.statusCode = 405
-              res.end(JSON.stringify({ error: 'Method not allowed' }))
-              return
-            }
-
-            let body = ''
-            for await (const chunk of req) { body += chunk }
-
-            try {
-              const { imageUrl, effect } = JSON.parse(body)
-              console.log(`🎬 Генерация видео: эффект "${effect}"`)
-
-              await new Promise(resolve => setTimeout(resolve, 3000))
-
-              const mockVideos: Record<string, string> = {
-                'zoom-in': 'https://assets.mixkit.co/videos/preview/mixkit-abstract-flowing-neon-lights-1240-large.mp4',
-                'pan': 'https://assets.mixkit.co/videos/preview/mixkit-glowing-neon-lights-1174-large.mp4',
-                'fire': 'https://assets.mixkit.co/videos/preview/mixkit-fire-and-sparks-1546-large.mp4',
-                'glitch': 'https://assets.mixkit.co/videos/preview/mixkit-computer-code-on-screen-1172-large.mp4',
-              }
-
-              res.setHeader('Content-Type', 'application/json')
-              res.statusCode = 200
-              res.end(JSON.stringify({ videoUrl: mockVideos[effect] || mockVideos['zoom-in'], duration: 4, effect }))
-            } catch (error) {
-              res.statusCode = 500
-              res.end(JSON.stringify({ error: 'Video generation failed' }))
-            }
-          })
-
           // ===== /api/images/stock - Unsplash =====
           server.middlewares.use('/api/images/stock', async (req, res) => {
             if (req.method === 'OPTIONS') { res.statusCode = 200; res.end(); return }
